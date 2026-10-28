@@ -1,0 +1,64 @@
+
+name: Publish Website to CPanel
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  web-deploy:
+    name: Deploy Laravel Website
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get latest code
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Node dependencies and build assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Verify Laravel directories
+        run: |
+          mkdir -p storage/framework/views
+          mkdir -p storage/framework/cache/data
+          mkdir -p storage/framework/sessions
+          mkdir -p bootstrap/cache
+
+          touch storage/framework/views/.gitignore
+          touch storage/framework/cache/.gitignore
+          touch storage/framework/sessions/.gitignore
+          touch bootstrap/cache/.gitignore
+
+      - name: Sync files to cPanel
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          exclude: |
+            **/.git*
+            **/.github/**
+            **/node_modules/**
+            **/vendor/**
+            **/tests/**
+            **/.env
+            **/.env.*
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/pail/**
+            **/bootstrap/cache/*.php
+            **/public/hot
+            **/public/storage
+            **/*.map
+            **/.DS_Store
+            **/Thumbs.db
