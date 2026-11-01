@@ -3,8 +3,8 @@
     $ref = $isInvoice ? $doc->number_label : $doc->receipt_label;
     $biz = $doc->business;
     $cust = $doc->customer;
-    $branch = $doc->branch_id ? \App\Models\Branch::find($doc->branch_id) : null;
     $init = ['address' => (string) $cust?->address, 'driver' => '', 'vehicle' => '', 'note' => ''];
+    $backUrl = $isInvoice ? route('invoices.show', $doc) : route('sales.receipt', $doc);
 @endphp
 
 <x-app-layout>
@@ -12,10 +12,13 @@
 
     <div class="py-8" x-data="{ f: {{ \Illuminate\Support\Js::from($init) }} }">
         <div class="max-w-3xl mx-auto px-4">
-            <div class="mb-4 flex gap-3 print:hidden">
-                <button onclick="window.print()" class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">Print delivery note</button>
-                <a href="{{ $isInvoice ? route('invoices.show', $doc) : route('sales.receipt', $doc) }}" wire:navigate
-                   class="rounded-lg border border-brand-500 px-4 py-2 text-sm font-semibold text-brand-600 hover:bg-brand-50">Back</a>
+            <div class="mb-4 flex flex-wrap gap-3 print:hidden">
+                <button type="button" onclick="window.print()"
+                        class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">Print delivery note</button>
+                {{-- Opened in a new tab, so Close ends the tab. If it was opened directly, go back instead. --}}
+                <button type="button"
+                        onclick="window.close(); setTimeout(() => { location.href = '{{ $backUrl }}' }, 200)"
+                        class="rounded-lg border border-brand-500 px-4 py-2 text-sm font-semibold text-brand-600 hover:bg-brand-50">Close</button>
             </div>
 
             <x-card class="mb-4 grid gap-3 p-4 text-sm sm:grid-cols-2 print:hidden">
