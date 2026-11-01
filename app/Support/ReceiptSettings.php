@@ -16,6 +16,7 @@ class ReceiptSettings
         'show_tax' => 'Tax line',
         'show_payments' => 'How it was paid',
         'show_powered' => 'Powered by KraftPOS line',
+        'show_logo' => 'Business logo',
     ];
 
     public const DEFAULTS = [
@@ -23,6 +24,7 @@ class ReceiptSettings
         'show_till' => true, 'show_cashier' => true, 'show_customer' => true, 'show_discounts' => true,
         'show_tax' => true, 'show_payments' => true, 'show_powered' => true,
         'header_text' => '', 'footer_text' => 'Thank you for shopping with us.', 'paper' => 'thermal',
+        'show_logo' => true,
     ];
 
     public static function for($business): array

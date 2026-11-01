@@ -17,7 +17,8 @@ class InvoiceService
 {
     public static function issue(
         int $customerId, ?string $dueDate, ?string $notes,
-        array $lines, ?array $discount, ?int $quotationId = null
+        array $lines, ?array $discount, ?int $quotationId = null,
+        float $deliveryCharge = 0, $deliveryZoneId = null
     ): Invoice {
         $user = auth()->user();
         abort_unless($user && $user->business_id && $user->can('issue-invoices'), 403);
@@ -55,7 +56,7 @@ class InvoiceService
             self::fail('notes', 'Notes are too long (255 characters at most).');
         }
 
-        return DB::transaction(function () use ($user, $customer, $due, $notes, $lines, $discount, $quotationId) {
+        return DB::transaction(function () use ($user, $customer, $due, $notes, $lines, $discount, $quotationId, $deliveryCharge, $deliveryZoneId) {
             $business = Business::lockForUpdate()->findOrFail($user->business_id);
 
             if ($quotationId) {
@@ -71,6 +72,7 @@ class InvoiceService
             }
 
             $priced = PricingService::price($lines, $discount, $business);
+            [$delivery, $deliveryLabel] = DeliveryService::resolve($deliveryZoneId, $deliveryCharge);
 
             $number = $business->last_invoice_number + 1;
             $business->last_invoice_number = $number;
@@ -89,90 +91,92 @@ class InvoiceService
                 'tax_rate' => $priced['tax_rate'],
                 'tax_inclusive' => $priced['tax_inclusive'],
                 'tax_amount' => $priced['tax_amount'],
-                'total' => $priced['total'],
+                'delivery_charge' => $delivery,
+                'delivery_label' => $deliveryLabel,
+                'total' => round($priced['total'] + $delivery, 2),
                 'branch_id' => BranchService::currentId($user),
             ]);
 
             foreach ($priced['items'] as $item) {
-    $invoiceItem = $invoice->items()->create($item['attrs']);
+                $invoiceItem = $invoice->items()->create($item['attrs']);
 
-    // Stock leaves when the invoice is issued. Services have none.
+                // Stock leaves when the invoice is issued. Services have none.
+                if (! $item['variant']->product->is_service) {
+                    if ($item['variant']->product->tracks_batches) {
+                        BatchService::attach($invoiceItem, BatchService::take($item['variant'], $item['attrs']['quantity']));
+                    } else {
+                        StockService::assertSellable($item['variant'], $item['attrs']['quantity']);
+                    }
 
-    if (! $item['variant']->product->is_service) {
-        if (! $item['variant']->product->tracks_batches) { StockService::assertSellable($item['variant'], $item['attrs']['quantity']); }
-        if ($item['variant']->product->tracks_batches) {
-            BatchService::attach($invoiceItem, BatchService::take($item['variant'], $item['attrs']['quantity']));
-        }
-
-        StockService::record(
-            $item['variant'],
-            -$item['attrs']['quantity'],
-            'sale',
-            'Invoice ' . $invoice->number_label,
-        );
-    }
-}
+                    StockService::record(
+                        $item['variant'],
+                        -$item['attrs']['quantity'],
+                        'sale',
+                        'Invoice ' . $invoice->number_label,
+                    );
+                }
+            }
 
             return $invoice->refresh()->load('items');
         });
     }
 
     public static function recordPayment(Invoice $invoice, int $methodId, float $amount, ?string $reference): InvoicePayment
-{
-    $user = auth()->user();
-    abort_unless($user && $user->can('issue-invoices'), 403);
+    {
+        $user = auth()->user();
+        abort_unless($user && $user->can('issue-invoices'), 403);
 
-    $amount = round($amount, 2);
-    if ($amount <= 0) {
-        self::fail('amount', 'Enter an amount above zero.');
-    }
-
-    $method = PaymentMethod::active()->find($methodId);
-    if (! $method) {
-        self::fail('method', 'Choose a payment method.');
-    }
-
-    $reference = $method->type === 'mobile'
-        ? PaymentReference::required($reference)
-        : trim((string) $reference);
-
-    if (mb_strlen($reference) > 50) {
-        self::fail('reference', 'The reference is too long (50 characters at most).');
-    }
-
-    return DB::transaction(function () use ($invoice, $method, $amount, $reference, $user) {
-        $business = Business::lockForUpdate()->findOrFail($user->business_id);
-        $locked = Invoice::lockForUpdate()->findOrFail($invoice->id); // tenant scope applies
-
-        if ($locked->status !== 'issued') {
-            self::fail('amount', 'This invoice has been voided.');
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            self::fail('amount', 'Enter an amount above zero.');
         }
 
-        $balance = round((float) $locked->total - (float) $locked->amount_paid, 2);
-        if ($amount > $balance) {
-            self::fail('amount', 'That is more than the balance of ' . number_format($balance, 2) . '.');
+        $method = PaymentMethod::active()->find($methodId);
+        if (! $method) {
+            self::fail('method', 'Choose a payment method.');
         }
 
-        $number = $business->last_payment_number + 1;
-        $business->last_payment_number = $number;
-        $business->save();
+        $reference = $method->type === 'mobile'
+            ? PaymentReference::required($reference)
+            : trim((string) $reference);
 
-        $payment = $locked->payments()->create([
-            'user_id' => $user->id,
-            'payment_method_id' => $method->id,
-            'method_name' => $method->name,
-            'type' => $method->type,
-            'amount' => $amount,
-            'reference' => $reference !== '' ? $reference : null,
-            'receipt_number' => $number,
-        ]);
+        if (mb_strlen($reference) > 50) {
+            self::fail('reference', 'The reference is too long (50 characters at most).');
+        }
 
-        $locked->amount_paid = round((float) $locked->amount_paid + $amount, 2);
-        $locked->save();
+        return DB::transaction(function () use ($invoice, $method, $amount, $reference, $user) {
+            $business = Business::lockForUpdate()->findOrFail($user->business_id);
+            $locked = Invoice::lockForUpdate()->findOrFail($invoice->id); // tenant scope applies
 
-        return $payment->refresh();
-    });
-}
+            if ($locked->status !== 'issued') {
+                self::fail('amount', 'This invoice has been voided.');
+            }
+
+            $balance = round((float) $locked->total - (float) $locked->amount_paid, 2);
+            if ($amount > $balance) {
+                self::fail('amount', 'That is more than the balance of ' . number_format($balance, 2) . '.');
+            }
+
+            $number = $business->last_payment_number + 1;
+            $business->last_payment_number = $number;
+            $business->save();
+
+            $payment = $locked->payments()->create([
+                'user_id' => $user->id,
+                'payment_method_id' => $method->id,
+                'method_name' => $method->name,
+                'type' => $method->type,
+                'amount' => $amount,
+                'reference' => $reference !== '' ? $reference : null,
+                'receipt_number' => $number,
+            ]);
+
+            $locked->amount_paid = round((float) $locked->amount_paid + $amount, 2);
+            $locked->save();
+
+            return $payment->refresh();
+        });
+    }
 
     public static function void(Invoice $invoice, string $reason): Invoice
     {

@@ -2,10 +2,14 @@
 
 use App\Models\Branch;
 use App\Support\ReceiptSettings;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new class extends Component
 {
+    use WithFileUploads;
+
     public array $o = [];
     public string $headerText = '';
     public string $footerText = '';
@@ -13,6 +17,8 @@ new class extends Component
     public string $invoiceTerms = '';
     public string $quotationTerms = '';
     public array $tills = [];
+    public $logo = null;
+    public bool $removeLogo = false;
 
     public function mount(): void
     {
@@ -34,7 +40,13 @@ new class extends Component
 
     public function with(): array
     {
-        return ['branches' => Branch::orderByDesc('is_main')->orderBy('name')->get(), 'toggles' => ReceiptSettings::TOGGLES];
+        $path = auth()->user()->business->logo_path;
+
+        return [
+            'branches' => Branch::orderByDesc('is_main')->orderBy('name')->get(),
+            'toggles' => ReceiptSettings::TOGGLES,
+            'logoUrl' => $path ? Storage::disk('public')->url($path) : null,
+        ];
     }
 
     public function save(): void
@@ -48,7 +60,8 @@ new class extends Component
             'invoiceTerms' => ['nullable', 'string', 'max:3000'],
             'quotationTerms' => ['nullable', 'string', 'max:3000'],
             'tills.*' => ['nullable', 'string', 'max:20'],
-        ]);
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:1024'],
+        ], ['logo.max' => 'The logo is too large (1 MB at most).']);
 
         $settings = [];
         foreach (array_keys(ReceiptSettings::TOGGLES) as $k) {
@@ -57,21 +70,57 @@ new class extends Component
         $settings += ['header_text' => trim($this->headerText), 'footer_text' => trim($this->footerText), 'paper' => $this->paper];
 
         $b = auth()->user()->business;
+        $logoPath = $b->logo_path;
+
+        if (($this->removeLogo || $this->logo) && $logoPath) {
+            Storage::disk('public')->delete($logoPath);
+            $logoPath = null;
+        }
+        if ($this->logo) {
+            $logoPath = $this->logo->store('logos/' . $b->id, 'public');
+        }
+
         $b->forceFill([
             'receipt_settings' => $settings,
             'invoice_terms' => trim($this->invoiceTerms) ?: null,
             'quotation_terms' => trim($this->quotationTerms) ?: null,
+            'logo_path' => $logoPath,
         ])->save();
 
         foreach (Branch::all() as $branch) {
             $branch->forceFill(['till_number' => trim((string) ($this->tills[$branch->id] ?? '')) ?: null])->save();
         }
 
+        $this->reset('logo', 'removeLogo');
         $this->dispatch('notify', message: 'Receipt and document settings saved.');
     }
 }; ?>
 
 <form wire:submit="save" class="space-y-6">
+    <x-card class="p-6 space-y-4">
+        <h3 class="text-lg font-medium text-gray-900">Logo</h3>
+        <div class="flex items-center gap-4">
+            <div class="flex h-20 w-32 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+                @if ($logo)
+                    <img src="{{ $logo->temporaryUrl() }}" class="max-h-full max-w-full object-contain">
+                @elseif ($logoUrl && ! $removeLogo)
+                    <img src="{{ $logoUrl }}" class="max-h-full max-w-full object-contain">
+                @else
+                    <span class="text-xs text-gray-400">No logo</span>
+                @endif
+            </div>
+            <div class="space-y-1">
+                <input wire:model="logo" type="file" accept="image/png,image/jpeg,image/webp" class="text-sm">
+                <div wire:loading wire:target="logo" class="text-xs text-gray-500">Uploading...</div>
+                <p class="text-xs text-gray-500">PNG, JPG or WebP, 1 MB at most. A wide, simple logo prints best.</p>
+                @if ($logoUrl && ! $logo)
+                    <label class="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" wire:model="removeLogo" class="rounded"> Remove current logo</label>
+                @endif
+                <x-input-error :messages="$errors->get('logo')" />
+            </div>
+        </div>
+    </x-card>
+
     <x-card class="p-6 space-y-4">
         <h3 class="text-lg font-medium text-gray-900">Receipt: what to show</h3>
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -121,12 +170,12 @@ new class extends Component
         <p class="text-sm text-gray-500">Printed at the bottom of every invoice and quotation. Leave empty to print none.</p>
         <div>
             <x-input-label for="t_inv" value="Invoice terms" />
-            <textarea wire:model="invoiceTerms" id="t_inv" rows="5" maxlength="3000" class="mt-1 block w-full rounded-lg border-gray-300 text-sm" placeholder="e.g. Payment due within 30 days. Goods remain the property of the seller until paid."></textarea>
+            <textarea wire:model="invoiceTerms" id="t_inv" rows="5" maxlength="3000" class="mt-1 block w-full rounded-lg border-gray-300 text-sm" placeholder="e.g. Payment due within 30 days."></textarea>
             <x-input-error :messages="$errors->get('invoiceTerms')" class="mt-2" />
         </div>
         <div>
             <x-input-label for="t_quo" value="Quotation terms" />
-            <textarea wire:model="quotationTerms" id="t_quo" rows="5" maxlength="3000" class="mt-1 block w-full rounded-lg border-gray-300 text-sm" placeholder="e.g. Prices valid until the date shown. Delivery charged separately."></textarea>
+            <textarea wire:model="quotationTerms" id="t_quo" rows="5" maxlength="3000" class="mt-1 block w-full rounded-lg border-gray-300 text-sm" placeholder="e.g. Prices valid until the date shown."></textarea>
             <x-input-error :messages="$errors->get('quotationTerms')" class="mt-2" />
         </div>
     </x-card>

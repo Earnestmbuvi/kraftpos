@@ -1,4 +1,5 @@
 <x-app-layout>
+    <x-print-styles paper="a4" />
     <div class="py-8">
         <div class="max-w-3xl mx-auto px-4">
             <div class="mb-4 flex gap-3 print:hidden">

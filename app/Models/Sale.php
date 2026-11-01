@@ -16,7 +16,7 @@ class Sale extends Model
         'discount_type', 'discount_value', 'discount_amount',
         'tax_rate', 'tax_inclusive', 'tax_amount',
         'total', 'amount_paid', 'change_given','customer_id',
-        'branch_id', 'credit_applied',
+        'branch_id', 'credit_applied','delivery_charge', 'delivery_label'
     ];
 
     protected $casts = [

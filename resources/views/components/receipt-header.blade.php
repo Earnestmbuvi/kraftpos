@@ -6,6 +6,7 @@
 @endphp
 
 <div {{ $attributes->merge(['class' => 'text-center']) }}>
+    <x-business-logo :business="$business" />
     <p class="text-lg font-bold text-gray-900">{{ $business->name }}</p>
     @if ($s['header_text']) <p class="text-sm text-gray-600">{{ $s['header_text'] }}</p> @endif
     @if ($s['show_phone'] && $business->phone) <p class="text-sm text-gray-600">{{ $business->phone }}</p> @endif

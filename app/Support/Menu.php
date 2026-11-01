@@ -32,13 +32,14 @@ class Menu
         }
         if ($user->can('manage-products')) {
             $tabs['units'] = 'Units';
-            $tabs['options'] = 'Options';
+            $tabs['options'] = 'Variants';
         }
         if ($user->can('manage-categories')) {
             $tabs['expense-categories'] = 'Expense categories';
         }
         if ($user->can('manage-settings')) {
             $tabs['payments'] = 'Payment methods';
+            $tabs['delivery'] = 'Delivery zones';
             $tabs['tax'] = 'Sales settings';
             $tabs['branches'] = 'Branches';
             $tabs['roles'] = 'Staff roles';

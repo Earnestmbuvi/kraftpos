@@ -173,5 +173,16 @@ Route::get('reports/detail-export/{kind}', \App\Http\Controllers\SalesDetailExpo
 Route::view('reports/tax', 'reports-tax')
     ->middleware(['auth', 'verified', 'business.active', 'permission:view-reports'])
     ->name('reports.tax');
+Route::get('sales/{sale}/delivery-note', function (\App\Models\Sale $sale) {
+    abort_if($sale->status === 'voided', 404);
+    abort_unless($sale->user_id === auth()->id() || auth()->user()->can('view-reports'), 403);
 
+    return view('delivery-note', ['kind' => 'sale', 'doc' => $sale->load('items', 'customer', 'business')]);
+})->middleware(['auth', 'verified', 'business.active', 'permission:make-sales'])->name('sales.delivery-note');
+
+Route::get('invoices/{invoice}/delivery-note', function (\App\Models\Invoice $invoice) {
+    abort_if($invoice->status === 'voided', 404);
+
+    return view('delivery-note', ['kind' => 'invoice', 'doc' => $invoice->load('items', 'customer', 'business')]);
+})->middleware(['auth', 'verified', 'business.active', 'permission:issue-invoices'])->name('invoices.delivery-note');
 require __DIR__.'/auth.php';

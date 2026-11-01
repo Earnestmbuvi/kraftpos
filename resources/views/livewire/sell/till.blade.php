@@ -12,6 +12,7 @@ use App\Services\SaleService;
 use App\Services\StockService;
 use Illuminate\Validation\ValidationException;
 use Livewire\Volt\Component;
+use App\Models\DeliveryZone;
 
 new class extends Component
 {
@@ -27,6 +28,8 @@ new class extends Component
     public bool $showPay = false;
     public $customerId = null;
     public string $customerSearch = '';
+    public $deliveryZone = '';
+    public $deliveryAmount = '';
 
     public function mount(): void
     {
@@ -44,7 +47,7 @@ new class extends Component
         $lines = ProductVariant::with('product')
             ->whereIn('id', array_keys($this->cart))->get()->keyBy('id');
 
-        return [$lines, $this->totals($lines)];
+                return [$lines, $this->withDelivery($this->totals($lines))];
     }
 
     // Display only. SaleService prices everything again when the sale completes,
@@ -160,7 +163,7 @@ new class extends Component
             'customer_id' => $this->customerId ?: null,
         ]);
         $this->dispatch('notify', message: 'Cart parked.');
-        $this->reset('cart', 'cartDType', 'cartDValue', 'holdLabel', 'customerId', 'showPay');
+        $this->reset('cart', 'cartDType', 'cartDValue', 'holdLabel', 'customerId', 'showPay','deliveryZone', 'deliveryAmount');
         $this->resetErrorBag();
     }
 
@@ -259,6 +262,7 @@ new class extends Component
                 ->orderBy('product_id')->orderBy('name')->limit(40)->get(),
             'lines' => $lines,
             'totals' => $totals,
+            'zones' => DeliveryZone::active()->orderBy('name')->get(),
             'methods' => PaymentMethod::active()->orderBy('name')->get(),
             'paid' => $paid,
             'change' => max(round($paid - $totals['total'], 2), 0),
@@ -379,7 +383,7 @@ new class extends Component
 
     public function clearCart(): void
     {
-        $this->reset('cart', 'cartDType', 'cartDValue', 'showPay');
+        $this->reset('cart', 'cartDType', 'cartDValue', 'showPay','deliveryZone', 'deliveryAmount');
         $this->resetErrorBag();
     }
 
@@ -472,7 +476,10 @@ new class extends Component
             ])->values()->all();
 
         // Validation errors from the service show up under 'cart' and 'payments'
-        $sale = SaleService::complete($lines, $discount, $payments, $this->customerId ? (int) $this->customerId : null);
+        $sale = SaleService::complete(
+        $lines, $discount, $payments, $this->customerId ? (int) $this->customerId : null,
+        deliveryCharge: (float) ($this->deliveryAmount ?: 0), deliveryZoneId: $this->deliveryZone ?: null
+            );
         session()->flash('notify', 'Sale completed.');
         $this->redirect(route('sales.receipt', $sale), navigate: true);
     }
@@ -510,6 +517,23 @@ new class extends Component
 
         $this->redirect(route('invoices.create', ['from' => 'till']), navigate: true);
     }
+
+    public function updatedDeliveryZone($value): void
+{
+    $zone = $value ? DeliveryZone::active()->find((int) $value) : null;
+    $this->deliveryAmount = $zone ? (string) $zone->fee : '';
+}
+
+// Adds the delivery fee to the displayed totals (SaleService adds it again, validated, when the sale completes)
+private function withDelivery(array $t): array
+{
+    $fee = max(round((float) ($this->deliveryAmount ?: 0), 2), 0);
+    $t['delivery'] = $fee;
+    $t['total'] = round($t['total'] + $fee, 2);
+
+    return $t;
+}
+
 }; ?>
 
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:h-[calc(100vh-11rem)]">
@@ -798,7 +822,20 @@ new class extends Component
                             @endif
                             <x-input-error :messages="$errors->get('customer')" />
                         </div>
-
+                        {{-- Delivery --}}
+                        <div class="space-y-2">
+    <p class="text-sm font-medium text-gray-700">Delivery (optional)</p>
+    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <select wire:model.live="deliveryZone" class="text-sm">
+            <option value="">No zone / custom fee</option>
+            @foreach ($zones as $z)
+                <option value="{{ $z->id }}">{{ $z->name }} (Kshs {{ number_format($z->fee, 2) }})</option>
+            @endforeach
+        </select>
+        <x-text-input wire:model.live.debounce.400ms="deliveryAmount" type="number" step="0.01" min="0" placeholder="Delivery fee" class="block w-full text-sm" />
+    </div>
+    <x-input-error :messages="$errors->get('delivery')" />
+</div>
                         {{-- Payments --}}
                         <div class="space-y-3">
                             <p class="text-sm font-medium text-gray-700">Payment</p>
@@ -855,6 +892,9 @@ new class extends Component
                             @endif
                             @if ($totals['tax'] > 0)
                                 <div class="flex justify-between"><span class="text-gray-600">Tax</span><span>{{ number_format($totals['tax'], 2) }}</span></div>
+                            @endif
+                            @if (($totals['delivery'] ?? 0) > 0)
+                            <div class="flex justify-between"><span class="text-gray-600">Delivery</span><span>{{ number_format($totals['delivery'], 2) }}</span></div>
                             @endif
                             <div class="flex justify-between border-t border-gray-200 pt-2 text-lg font-bold text-green-700">
                                 <span>Total</span><span>Kshs {{ number_format($totals['total'], 2) }}</span>

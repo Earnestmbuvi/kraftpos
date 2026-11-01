@@ -33,8 +33,10 @@
             @endif
 
             <main>
+
                 <x-subscription-banner />
                 {{ $slot }}
+
             </main>
         </div>
     </body>

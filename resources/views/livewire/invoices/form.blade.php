@@ -1,15 +1,17 @@
 <?php
 
 use App\Models\Customer;
+use App\Models\DeliveryZone;
 use App\Models\PaymentMethod;
 use App\Models\ProductVariant;
 use App\Models\Quotation;
+use App\Services\BranchService;
 use App\Services\InvoiceService;
 use App\Services\PricingService;
+use App\Services\StockService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Volt\Component;
-use App\Services\BranchService;
 
 new class extends Component
 {
@@ -22,6 +24,8 @@ new class extends Component
     public $cartDValue = '';
     public ?int $quotationId = null;
     public bool $fromTill = false;
+    public $deliveryZone = '';
+    public $deliveryAmount = '';
 
     // payment taken now (optional)
     public $payNow = '';
@@ -99,6 +103,12 @@ new class extends Component
         }
     }
 
+    public function updatedDeliveryZone($value): void
+    {
+        $zone = $value ? DeliveryZone::active()->find((int) $value) : null;
+        $this->deliveryAmount = $zone ? (string) $zone->fee : '';
+    }
+
     private function payload(): array
     {
         $lines = [];
@@ -130,16 +140,17 @@ new class extends Component
             $priced = null;
         }
 
+        $delivery = max(round((float) ($this->deliveryAmount ?: 0), 2), 0);
+
         return [
             'discountsOn' => (bool) auth()->user()->business->discounts_enabled,
             'customers' => Customer::active()->orderBy('name')->get(['id', 'name', 'phone']),
             'methods' => PaymentMethod::active()->orderBy('name')->get(),
+            'zones' => DeliveryZone::active()->orderBy('name')->get(),
+            'delivery' => $delivery,
 
             'results' => $term === '' ? collect() : ProductVariant::with('product')->active()
-                     ->whereHas('product', fn ($q) =>
-                          $q->active()->forBranch(BranchService::currentId())
-                            )
-
+                ->whereHas('product', fn ($q) => $q->active()->forBranch(BranchService::currentId()))
                 ->where(function ($q) use ($term) {
                     $q->where('sku', 'like', "%{$term}%")
                       ->orWhere('barcode', 'like', "%{$term}%")
@@ -152,68 +163,70 @@ new class extends Component
         ];
     }
 
-   public function addLine(int $id): void
-{
-    $v = ProductVariant::with('product')->active()->find($id); // tenant scope applies
-    if (! $v || ! $v->product->is_active) {
-        $this->addError('cart', 'That item is not available.');
-        return;
-    }
-
-    $next = (int) ($this->lines[$id]['qty'] ?? 0) + 1;
-
-    if ($message = \App\Services\StockService::cartMessage($v, $next)) {
-        $this->dispatch('notify', message: $message, type: 'error');
-        return;
-    }
-
-    $this->resetErrorBag('cart');
-
-    if (isset($this->lines[$id])) {
-        $this->lines[$id]['qty'] = $next;
-    } else {
-        $this->lines[$id] = ['qty' => 1, 'dtype' => '', 'dvalue' => ''];
-    }
-
-    $this->search = '';
-}
-    public function updatedLines($value, $key): void
-{
-    [$id, $field] = array_pad(explode('.', (string) $key, 2), 2, null);
-
-    if ($field !== 'qty' || ! isset($this->lines[$id]) || $value === '' || $value === null) {
-        return;
-    }
-
-    $qty = (int) $value;
-    if ($qty < 1) {
-        $this->lines[$id]['qty'] = 1;
-        return;
-    }
-
-    $v = ProductVariant::with('product')->active()->find((int) $id);
-    if (! $v) {
-        unset($this->lines[$id]);
-        return;
-    }
-
-    if ($message = \App\Services\StockService::cartMessage($v, $qty)) {
-        $v->loadMissing('batches');
-        $max = $v->product->tracks_batches
-            ? $v->sellableQuantity()
-            : max(\App\Services\BranchService::quantity($v, \App\Services\BranchService::currentId()), 0);
-
-        if ($max <= 0) {
-            unset($this->lines[$id]);
-            $message .= ' It was removed from the list.';
-        } else {
-            $this->lines[$id]['qty'] = $max;
-            $message .= " Quantity set to {$max}.";
+    public function addLine(int $id): void
+    {
+        $v = ProductVariant::with('product')->active()->find($id); // tenant scope applies
+        if (! $v || ! $v->product->is_active) {
+            $this->addError('cart', 'That item is not available.');
+            return;
         }
 
-        $this->dispatch('notify', message: $message, type: 'error');
+        $next = (int) ($this->lines[$id]['qty'] ?? 0) + 1;
+
+        if ($message = StockService::cartMessage($v, $next)) {
+            $this->dispatch('notify', message: $message, type: 'error');
+            return;
+        }
+
+        $this->resetErrorBag('cart');
+
+        if (isset($this->lines[$id])) {
+            $this->lines[$id]['qty'] = $next;
+        } else {
+            $this->lines[$id] = ['qty' => 1, 'dtype' => '', 'dvalue' => ''];
+        }
+
+        $this->search = '';
     }
-}
+
+    public function updatedLines($value, $key): void
+    {
+        [$id, $field] = array_pad(explode('.', (string) $key, 2), 2, null);
+
+        if ($field !== 'qty' || ! isset($this->lines[$id]) || $value === '' || $value === null) {
+            return;
+        }
+
+        $qty = (int) $value;
+        if ($qty < 1) {
+            $this->lines[$id]['qty'] = 1;
+            return;
+        }
+
+        $v = ProductVariant::with('product')->active()->find((int) $id);
+        if (! $v) {
+            unset($this->lines[$id]);
+            return;
+        }
+
+        if ($message = StockService::cartMessage($v, $qty)) {
+            $v->loadMissing('batches');
+            $max = $v->product->tracks_batches
+                ? \App\Services\BatchService::sellable($v)
+                : max(BranchService::quantity($v, BranchService::currentId()), 0);
+
+            if ($max <= 0) {
+                unset($this->lines[$id]);
+                $message .= ' It was removed from the list.';
+            } else {
+                $this->lines[$id]['qty'] = $max;
+                $message .= " Quantity set to {$max}.";
+            }
+
+            $this->dispatch('notify', message: $message, type: 'error');
+        }
+    }
+
     public function removeLine(int $id): void
     {
         unset($this->lines[$id]);
@@ -228,7 +241,8 @@ new class extends Component
         $invoice = DB::transaction(function () use ($lines, $discount, $pay) {
             $invoice = InvoiceService::issue(
                 (int) $this->customerId, $this->dueDate ?: null, $this->notes,
-                $lines, $discount, $this->quotationId
+                $lines, $discount, $this->quotationId,
+                (float) ($this->deliveryAmount ?: 0), $this->deliveryZone ?: null
             );
 
             if ($pay > 0) {
@@ -360,20 +374,37 @@ new class extends Component
                 </div>
             @endif
 
+            <div class="space-y-2 border-t border-gray-200 pt-3">
+                <p class="text-sm font-medium text-gray-700">Delivery (optional)</p>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <select wire:model.live="deliveryZone" class="text-sm">
+                        <option value="">No zone / custom fee</option>
+                        @foreach ($zones as $z)
+                            <option value="{{ $z->id }}">{{ $z->name }} (Kshs {{ number_format($z->fee, 2) }})</option>
+                        @endforeach
+                    </select>
+                    <x-text-input wire:model.live.debounce.400ms="deliveryAmount" type="number" step="0.01" min="0" placeholder="Delivery fee" class="block w-full text-sm" />
+                </div>
+                <x-input-error :messages="$errors->get('delivery')" />
+            </div>
+
             @if ($priced)
                 <div class="ml-auto w-full max-w-xs space-y-1 border-t border-gray-200 pt-3 text-sm">
                     <div class="flex justify-between"><span class="text-gray-600">Subtotal</span><span>{{ number_format($priced['subtotal'], 2) }}</span></div>
                     @if ($priced['discount_amount'] > 0)
                         <div class="flex justify-between"><span class="text-gray-600">Discount</span><span>-{{ number_format($priced['discount_amount'], 2) }}</span></div>
                     @endif
-                    @if ($priced['tax_rate'] > 0)
+                    @if ($priced['tax_amount'] > 0)
                         <div class="flex justify-between">
                             <span class="text-gray-600">Tax ({{ rtrim(rtrim(number_format($priced['tax_rate'], 2), '0'), '.') }}%{{ $priced['tax_inclusive'] ? ', included' : '' }})</span>
                             <span>{{ number_format($priced['tax_amount'], 2) }}</span>
                         </div>
                     @endif
+                    @if ($delivery > 0)
+                        <div class="flex justify-between"><span class="text-gray-600">Delivery</span><span>{{ number_format($delivery, 2) }}</span></div>
+                    @endif
                     <div class="flex justify-between pt-1 text-lg font-bold text-gray-900">
-                        <span>Total</span><span>Kshs {{ number_format($priced['total'], 2) }}</span>
+                        <span>Total</span><span>Kshs {{ number_format($priced['total'] + $delivery, 2) }}</span>
                     </div>
                 </div>
             @else

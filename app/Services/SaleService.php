@@ -12,8 +12,10 @@ use Illuminate\Validation\ValidationException;
 
 class SaleService
 {
-    public static function complete(array $lines, ?array $discount, array $payments, ?int $customerId = null, float $credit = 0): Sale
-    {
+    public static function complete(
+        array $lines, ?array $discount, array $payments, ?int $customerId = null, float $credit = 0,
+        float $deliveryCharge = 0, $deliveryZoneId = null
+    ): Sale {
         $user = auth()->user();
         abort_unless($user && $user->business_id && $user->can('make-sales'), 403);
 
@@ -32,11 +34,13 @@ class SaleService
             self::fail('customer', 'That customer is not available.');
         }
 
-        return DB::transaction(function () use ($user, $lines, $discount, $payments, $customerId, $credit) {
+        return DB::transaction(function () use ($user, $lines, $discount, $payments, $customerId, $credit, $deliveryCharge, $deliveryZoneId) {
             $business = Business::lockForUpdate()->findOrFail($user->business_id);
 
             $priced = PricingService::price($lines, $discount, $business);
-            $total = $priced['total'];
+
+            [$delivery, $deliveryLabel] = DeliveryService::resolve($deliveryZoneId, $deliveryCharge);
+            $total = round($priced['total'] + $delivery, 2);
             $credit = max(0, min(round($credit, 2), $total));
 
             $paid = 0.0;
@@ -98,6 +102,8 @@ class SaleService
                 'tax_rate' => $priced['tax_rate'],
                 'tax_inclusive' => $priced['tax_inclusive'],
                 'tax_amount' => $priced['tax_amount'],
+                'delivery_charge' => $delivery,
+                'delivery_label' => $deliveryLabel,
                 'total' => $total,
                 'amount_paid' => $covered,
                 'credit_applied' => $credit,

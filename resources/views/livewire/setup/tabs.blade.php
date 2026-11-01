@@ -33,6 +33,7 @@ new class extends Component
             $tabs['payments'] = 'Payment methods';
             $tabs['tax'] = 'Sales settings';
             $tabs['branches'] = 'Branches';
+            $tabs['delivery'] = 'Delivery zones';
         }
 
         return $tabs;
@@ -82,5 +83,7 @@ new class extends Component
         <livewire:settings.tax wire:key="panel-tax" />
     @elseif ($tab === 'branches')
         <livewire:branches.manage wire:key="panel-branches" />
+     @elseif ($tab === 'delivery')
+        <livewire:settings.delivery-zones />
     @endif
 </div>

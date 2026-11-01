@@ -103,6 +103,7 @@ new class extends Component
 }; ?>
 
 <div class="space-y-6">
+    <x-print-styles paper="a4" />
     @php
         $ps = $invoice->payment_status;
         $color = ['paid' => 'green', 'partly_paid' => 'orange', 'unpaid' => 'gray', 'overdue' => 'red', 'voided' => 'red', 'written_off' => 'gray'][$ps] ?? 'gray';
@@ -114,11 +115,16 @@ new class extends Component
                 class="inline-flex items-center px-4 py-2 rounded-lg bg-brand-500 text-sm font-semibold text-white hover:bg-brand-600">
             Print invoice
         </button>
+         @if ($invoice->status === 'issued')
+         <a href="{{ route('invoices.delivery-note', $invoice) }}" target="_blank"
+       class="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Delivery note</a>
+            @endif
         <a href="{{ route('invoices') }}" wire:navigate
            class="inline-flex items-center px-4 py-2 rounded-lg border border-brand-500 text-sm font-semibold text-brand-600 hover:bg-brand-50">
             All invoices
         </a>
     </div>
+
 
     <x-card class="p-8 text-sm print:border-0 print:p-0">
         @if ($invoice->status === 'voided')
@@ -129,6 +135,7 @@ new class extends Component
 
         <div class="flex justify-between">
             <div>
+                <x-business-logo :business="$invoice->business" class="h-14 !mx-0" />
                 <p class="text-xl font-bold text-gray-900">{{ $invoice->business->name }}</p>
                 @if ($invoice->business->phone) <p class="text-gray-600">{{ $invoice->business->phone }}</p> @endif
                 <p class="text-gray-600">{{ collect([$invoice->business->address, $invoice->business->county])->filter()->implode(', ') }}</p>
@@ -191,6 +198,10 @@ new class extends Component
                     <span>{{ number_format($invoice->tax_amount, 2) }}</span>
                 </div>
             @endif
+            @if ($invoice->delivery_charge > 0)
+                <div class="flex justify-between"><span>{{ $invoice->delivery_label ?: 'Delivery' }}</span><span>{{ number_format($invoice->delivery_charge, 2) }}</span></div>
+            @endif
+            <div class="my-2 border-t border-gray-200"></div>
             <div class="flex justify-between text-base font-bold text-gray-900">
                 <span>Total</span><span>Kshs {{ number_format($invoice->total, 2) }}</span>
             </div>

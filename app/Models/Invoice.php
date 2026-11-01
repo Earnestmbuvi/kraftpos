@@ -14,7 +14,7 @@ class Invoice extends Model
     protected $fillable = [
         'user_id', 'branch_id', 'customer_id', 'invoice_number', 'due_date', 'notes',
         'subtotal', 'discount_type', 'discount_value', 'discount_amount',
-        'tax_rate', 'tax_inclusive', 'tax_amount', 'total',
+        'tax_rate', 'tax_inclusive', 'tax_amount', 'total','delivery_charge', 'delivery_label',
     ];
 
     protected $casts = [
