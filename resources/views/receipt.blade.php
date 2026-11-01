@@ -8,8 +8,8 @@
 @endphp
 
 <x-app-layout>
+    <x-print-styles :paper="$thermal ? 'thermal' : 'a4'" />
 
-<x-print-styles :thermal="$thermal" />
 
     <div class="py-8">
         <div class="mx-auto px-4 print:max-w-none print:px-0 {{ $thermal ? 'max-w-sm' : 'max-w-3xl' }}">
