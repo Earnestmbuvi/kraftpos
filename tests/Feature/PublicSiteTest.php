@@ -43,29 +43,29 @@ class PublicSiteTest extends TestCase
         $this->assertEquals(1, Lead::count());
     }
 
-    public function test_receipt_settings_control_the_receipt_and_terms_are_saved(): void
+    public function test_receipt_settings_control_the_receipt(): void
     {
-        $u = $this->makeActiveUser();
-        $u->assignRole('owner');
-        BusinessSetup::run($u->business);
-        $this->actingAs($u);
+    $u = $this->makeActiveUser();
+    $u->assignRole('owner');
+    BusinessSetup::run($u->business);
+    $this->actingAs($u);
 
-        $branch = \App\Models\Branch::first();
+    $branch = \App\Models\Branch::first();
 
-        Volt::test('settings.receipts')
-            ->set('o.show_till', true)->set('o.show_cashier', false)
-            ->set('footerText', 'Karibu tena')->set('headerText', 'PIN P000123')
-            ->set('tills.' . $branch->id, 'Till 7')
-            ->set('invoiceTerms', 'Pay in 30 days')->call('save')->assertHasNoErrors();
+    Volt::test('settings.receipts')
+        ->set('o.show_till', true)->set('o.show_cashier', false)->set('o.show_pay_info', true)
+        ->set('footerText', 'Karibu tena')->set('headerText', 'PIN P000123')
+        ->set('payInfo', 'Paybill 123456')
+        ->set('tills.' . $branch->id, 'Till 7')
+        ->call('save')->assertHasNoErrors();
 
-        $this->assertEquals('Pay in 30 days', $u->business->fresh()->invoice_terms);
+    $v = Product::create(['name' => 'Sugar', 'type' => 'single'])
+        ->variants()->create(['name' => 'Default', 'selling_price' => 100, 'cost_price' => 60, 'stock_quantity' => 10]);
+    $sale = SaleService::complete([['variant_id' => $v->id, 'quantity' => 1]], null,
+        [['method_id' => PaymentMethod::where('name', 'Cash')->first()->id, 'amount' => 100]]);
 
-        $v = Product::create(['name' => 'Sugar', 'type' => 'single'])
-            ->variants()->create(['name' => 'Default', 'selling_price' => 100, 'stock_quantity' => 10]);
-        $sale = SaleService::complete([['variant_id' => $v->id, 'quantity' => 1]], null,
-            [['method_id' => PaymentMethod::where('name', 'Cash')->first()->id, 'amount' => 100]]);
-
-        $this->get(route('sales.receipt', $sale))->assertOk()
-            ->assertSee('Karibu tena')->assertSee('PIN P000123')->assertSee('Till 7')->assertDontSee('Served by');
+    $this->get(route('sales.receipt', $sale))->assertOk()
+        ->assertSee('Karibu tena')->assertSee('PIN P000123')->assertSee('Till 7')
+        ->assertSee('Paybill 123456')->assertDontSee('Served by');
     }
 }

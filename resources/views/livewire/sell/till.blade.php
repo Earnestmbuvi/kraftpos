@@ -518,10 +518,27 @@ new class extends Component
         $this->redirect(route('invoices.create', ['from' => 'till']), navigate: true);
     }
 
-    public function updatedDeliveryZone($value): void
+    // With one payment line, the amount received follows the bill (including delivery)
+private function syncSingleAmount(): void
+{
+    if (! $this->showPay || count($this->payments) !== 1) {
+        return;
+    }
+
+    [, $totals] = $this->currentTotals();
+    $this->payments[0]['amount'] = (string) $totals['total'];
+}
+
+public function updatedDeliveryZone($value): void
 {
     $zone = $value ? DeliveryZone::active()->find((int) $value) : null;
     $this->deliveryAmount = $zone ? (string) $zone->fee : '';
+    $this->syncSingleAmount();
+}
+
+public function updatedDeliveryAmount($value): void
+{
+    $this->syncSingleAmount();
 }
 
 // Adds the delivery fee to the displayed totals (SaleService adds it again, validated, when the sale completes)

@@ -17,6 +17,7 @@ class ReceiptSettings
         'show_payments' => 'How it was paid',
         'show_powered' => 'Powered by KraftPOS line',
         'show_logo' => 'Business logo',
+        'show_pay_info' => 'Payment info (paybill or till number)',
     ];
 
     public const DEFAULTS = [
@@ -24,7 +25,7 @@ class ReceiptSettings
         'show_till' => true, 'show_cashier' => true, 'show_customer' => true, 'show_discounts' => true,
         'show_tax' => true, 'show_payments' => true, 'show_powered' => true,
         'header_text' => '', 'footer_text' => 'Thank you for shopping with us.', 'paper' => 'thermal',
-        'show_logo' => true,
+        'show_logo' => true,'show_pay_info' => false, 'pay_info' => '',
     ];
 
     public static function for($business): array

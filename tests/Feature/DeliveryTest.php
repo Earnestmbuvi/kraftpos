@@ -60,6 +60,10 @@ class DeliveryTest extends TestCase
 
     public function test_a_logo_can_be_uploaded_and_removed(): void
     {
+
+        if (! extension_loaded('gd')) {
+    $this->markTestSkipped('GD extension is not installed.');
+}
         Storage::fake('public');
         $u = $this->owner();
 
@@ -71,5 +75,22 @@ class DeliveryTest extends TestCase
         Volt::test('settings.receipts')->set('removeLogo', true)->call('save');
         $this->assertNull($u->business->fresh()->logo_path);
         Storage::disk('public')->assertMissing($path);
+    }
+    public function test_the_amount_follows_the_delivery_fee_in_the_payment_popup(): void
+    {
+    $this->owner();
+    $v = Product::create(['name' => 'Diffuser', 'type' => 'single'])
+        ->variants()->create(['name' => 'Default', 'selling_price' => 1000, 'cost_price' => 500, 'stock_quantity' => 20]);
+    $zone = DeliveryZone::create(['name' => 'Westlands', 'fee' => 300]);
+
+    $c = Volt::test('sell.till')->call('addVariant', $v->id)->call('openPayment');
+    $base = (float) $c->get('payments')[0]['amount'];
+    $this->assertGreaterThan(0, $base);
+
+    $c->set('deliveryZone', (string) $zone->id);
+    $this->assertEquals($base + 300, (float) $c->get('payments')[0]['amount']);
+
+    $c->set('deliveryAmount', '450');
+    $this->assertEquals($base + 450, (float) $c->get('payments')[0]['amount']);
     }
 }

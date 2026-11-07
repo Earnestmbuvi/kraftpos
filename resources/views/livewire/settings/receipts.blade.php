@@ -13,12 +13,13 @@ new class extends Component
     public array $o = [];
     public string $headerText = '';
     public string $footerText = '';
+    public string $payInfo = '';
     public string $paper = 'thermal';
-    public string $invoiceTerms = '';
-    public string $quotationTerms = '';
     public array $tills = [];
     public $logo = null;
     public bool $removeLogo = false;
+    public string $invoiceTerms = '';
+    public string $quotationTerms = '';
 
     public function mount(): void
     {
@@ -32,9 +33,8 @@ new class extends Component
         }
         $this->headerText = (string) $s['header_text'];
         $this->footerText = (string) $s['footer_text'];
+        $this->payInfo = (string) $s['pay_info'];
         $this->paper = (string) $s['paper'];
-        $this->invoiceTerms = (string) $b->invoice_terms;
-        $this->quotationTerms = (string) $b->quotation_terms;
         $this->tills = Branch::pluck('till_number', 'id')->map(fn ($t) => (string) $t)->all();
     }
 
@@ -45,7 +45,7 @@ new class extends Component
         return [
             'branches' => Branch::orderByDesc('is_main')->orderBy('name')->get(),
             'toggles' => ReceiptSettings::TOGGLES,
-            'logoUrl' => $path ? Storage::disk('public')->url($path) : null,
+            'logoUrl' => $path ? asset('storage/' . ltrim($path, '/')) : null,
         ];
     }
 
@@ -56,9 +56,8 @@ new class extends Component
         $this->validate([
             'headerText' => ['nullable', 'string', 'max:200'],
             'footerText' => ['nullable', 'string', 'max:300'],
+            'payInfo' => ['nullable', 'string', 'max:200'],
             'paper' => ['required', 'in:thermal,a4'],
-            'invoiceTerms' => ['nullable', 'string', 'max:3000'],
-            'quotationTerms' => ['nullable', 'string', 'max:3000'],
             'tills.*' => ['nullable', 'string', 'max:20'],
             'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:1024'],
         ], ['logo.max' => 'The logo is too large (1 MB at most).']);
@@ -67,32 +66,30 @@ new class extends Component
         foreach (array_keys(ReceiptSettings::TOGGLES) as $k) {
             $settings[$k] = (bool) ($this->o[$k] ?? false);
         }
-        $settings += ['header_text' => trim($this->headerText), 'footer_text' => trim($this->footerText), 'paper' => $this->paper];
+        $settings += [
+            'header_text' => trim($this->headerText), 'footer_text' => trim($this->footerText),
+            'pay_info' => trim($this->payInfo), 'paper' => $this->paper,
+        ];
 
         $b = auth()->user()->business;
-        $logoPath = $b->logo_path;
+        $old = $b->logo_path;
 
-        if (($this->removeLogo || $this->logo) && $logoPath) {
-            Storage::disk('public')->delete($logoPath);
-            $logoPath = null;
-        }
-        if ($this->logo) {
-            $logoPath = $this->logo->store('logos/' . $b->id, 'public');
-        }
+        // Save the new file first, so a failed upload never costs the merchant their current logo
+        $new = $this->logo ? $this->logo->store('logos/' . $b->id, 'public') : null;
+        $logoPath = $new ?? ($this->removeLogo ? null : $old);
 
-        $b->forceFill([
-            'receipt_settings' => $settings,
-            'invoice_terms' => trim($this->invoiceTerms) ?: null,
-            'quotation_terms' => trim($this->quotationTerms) ?: null,
-            'logo_path' => $logoPath,
-        ])->save();
+        $b->forceFill(['receipt_settings' => $settings, 'logo_path' => $logoPath])->save();
+
+        if ($old && $old !== $logoPath) {
+            Storage::disk('public')->delete($old);
+        }
 
         foreach (Branch::all() as $branch) {
             $branch->forceFill(['till_number' => trim((string) ($this->tills[$branch->id] ?? '')) ?: null])->save();
         }
 
         $this->reset('logo', 'removeLogo');
-        $this->dispatch('notify', message: 'Receipt and document settings saved.');
+        $this->dispatch('notify', message: 'Receipt settings saved.');
     }
 }; ?>
 
@@ -142,6 +139,11 @@ new class extends Component
                 <x-text-input wire:model="footerText" id="r_foot" type="text" maxlength="300" class="mt-1 block w-full" />
                 <x-input-error :messages="$errors->get('footerText')" class="mt-2" />
             </div>
+            <div class="md:col-span-2">
+                <x-input-label for="r_pay" value="Payment info (prints only when 'Payment info' is ticked above)" />
+                <x-text-input wire:model="payInfo" id="r_pay" type="text" maxlength="200" class="mt-1 block w-full" placeholder="e.g. Lipa na M-Pesa: Paybill 123456, Acc: your name" />
+                <x-input-error :messages="$errors->get('payInfo')" class="mt-2" />
+            </div>
             <div>
                 <x-input-label for="r_paper" value="Paper" />
                 <select wire:model="paper" id="r_paper" class="mt-1 block w-full">
@@ -165,20 +167,7 @@ new class extends Component
         </div>
     </x-card>
 
-    <x-card class="p-6 space-y-4">
-        <h3 class="text-lg font-medium text-gray-900">Terms and conditions</h3>
-        <p class="text-sm text-gray-500">Printed at the bottom of every invoice and quotation. Leave empty to print none.</p>
-        <div>
-            <x-input-label for="t_inv" value="Invoice terms" />
-            <textarea wire:model="invoiceTerms" id="t_inv" rows="5" maxlength="3000" class="mt-1 block w-full rounded-lg border-gray-300 text-sm" placeholder="e.g. Payment due within 30 days."></textarea>
-            <x-input-error :messages="$errors->get('invoiceTerms')" class="mt-2" />
-        </div>
-        <div>
-            <x-input-label for="t_quo" value="Quotation terms" />
-            <textarea wire:model="quotationTerms" id="t_quo" rows="5" maxlength="3000" class="mt-1 block w-full rounded-lg border-gray-300 text-sm" placeholder="e.g. Prices valid until the date shown."></textarea>
-            <x-input-error :messages="$errors->get('quotationTerms')" class="mt-2" />
-        </div>
-    </x-card>
+    <p class="text-sm text-gray-500">Terms and payment details for invoices and quotations are under Setup, Terms and payment details.</p>
 
     <x-primary-button>Save settings</x-primary-button>
 </form>

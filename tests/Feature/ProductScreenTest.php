@@ -37,6 +37,7 @@ class ProductScreenTest extends TestCase
 
         Volt::test('products.manage')
             ->set('name', 'Rice 2kg')
+            ->set('cost_price', '50')
             ->set('selling_price', '300')
             ->set('stock_quantity', '10')
             ->call('save')
@@ -54,6 +55,7 @@ class ProductScreenTest extends TestCase
 
         Volt::test('products.manage')
             ->set('name', 'Rice 2kg')
+            ->set('cost_price', '50')
             ->set('selling_price', '300')
             ->call('save')
             ->assertForbidden();
@@ -72,6 +74,7 @@ class ProductScreenTest extends TestCase
             $component = Volt::test('products.manage')
                 ->set('name', "Item $i")
                 ->set('sku', 'SAME-1')
+                ->set('cost_price', '50')
                 ->set('selling_price', '100')
                 ->call('save');
         }

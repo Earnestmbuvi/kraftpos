@@ -126,6 +126,10 @@ Route::get('products/import-template', [\App\Http\Controllers\ProductCsvControll
 Route::view('products/import', 'products-import')
     ->middleware(['auth', 'verified', 'business.active', 'permission:manage-products'])
     ->name('products.import');
+Route::get('products/{product}', fn (\App\Models\Product $product) => view('product-show', ['productId' => $product->id]))
+    ->whereNumber('product')
+    ->middleware(['auth', 'verified', 'business.active', 'permission:view-products'])
+    ->name('products.show');
 
 Route::view('stock/movements', 'stock-movements')
     ->middleware(['auth', 'verified', 'business.active', 'permission:adjust-stock'])
@@ -185,4 +189,29 @@ Route::get('invoices/{invoice}/delivery-note', function (\App\Models\Invoice $in
 
     return view('delivery-note', ['kind' => 'invoice', 'doc' => $invoice->load('items', 'customer', 'business')]);
 })->middleware(['auth', 'verified', 'business.active', 'permission:issue-invoices'])->name('invoices.delivery-note');
+
+Route::view('services', 'services')
+    ->middleware(['auth', 'verified', 'business.active', 'permission:view-products'])
+    ->name('services');
+
+Route::get('catalog/{kind}/export', [\App\Http\Controllers\CatalogCsvController::class, 'export'])
+    ->whereIn('kind', ['product', 'service'])
+    ->middleware(['auth', 'verified', 'business.active', 'permission:view-products'])
+    ->name('catalog.export');
+
+Route::get('catalog/{kind}/template', [\App\Http\Controllers\CatalogCsvController::class, 'template'])
+    ->whereIn('kind', ['product', 'service'])
+    ->middleware(['auth', 'verified', 'business.active', 'permission:view-products'])
+    ->name('catalog.template');
+Route::view('labels', 'labels')
+    ->middleware(['auth', 'verified', 'business.active', 'permission:manage-products'])
+    ->name('labels');
+Route::view('activity', 'activity-page')
+    ->middleware(['auth', 'verified', 'business.active', 'permission:manage-users'])
+    ->name('activity');
+
+Route::view('admin/activity', 'admin-page', ['title' => 'Activity', 'component' => 'activity.index', 'props' => ['mode' => 'platform']])
+    ->middleware(['auth', 'verified', 'super.admin'])
+    ->name('admin.activity');
+
 require __DIR__.'/auth.php';

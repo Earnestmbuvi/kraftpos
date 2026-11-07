@@ -77,7 +77,7 @@
                     <p class="mt-6 text-gray-700"><span class="font-semibold">Notes:</span> {{ $quotation->notes }}</p>
                 @endif
 
-                <x-document-terms type="quotation" :business="$quotation->business" />
+                <livewire:documents.text-blocks kind="quotation" :document-id="$quotation->id" />
 
                 <p class="mt-6 text-xs text-gray-500">
                     Prices are as at {{ $quotation->created_at->format('d M Y') }} and may change after the valid-until date.

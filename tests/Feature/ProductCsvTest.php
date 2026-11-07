@@ -69,9 +69,9 @@ class ProductCsvTest extends TestCase
 
         Volt::test('products.import')
             ->set('file', $this->csv(self::HEAD
-                . "Sugar 1kg,Groceries,kg,SUG-1,,170,200,30,5,product\n"
+                . "Sugar 1kg,Groceries,kg,SUG-1,0,170,200,30,5,product\n"
                 . "Haircut,,pcs,,,0,500,12,3,service\n"
-                . "Bread,groceries,,,,,60,,,\n"))
+                . "Bread,groceries,,,,0,60,,,\n"))
             ->call('import')->assertHasNoErrors()->assertSet('problems', []);
 
         $this->assertEquals(3, Product::count());
@@ -130,7 +130,7 @@ class ProductCsvTest extends TestCase
         $this->actAs('manager');
 
         Volt::test('products.import')
-            ->set('file', $this->csv("name;selling_price;unit\nTea;120;pcs\n"))
+            ->set('file', $this->csv("name;selling_price;unit;cost_price\nTea;120;pcs;50\n"))
             ->call('import')->assertHasNoErrors();
         $this->assertEquals(1, Product::where('name', 'Tea')->count());
 

@@ -110,7 +110,7 @@ class PosExpansionTest extends TestCase
         $this->actAs('manager');
 
         Volt::test('products.manage')->call('openCreate')
-            ->set('name', 'Bread')->set('selling_price', '60')->set('stock_quantity', '5')->set('tax_class', 'zero')
+            ->set('name', 'Bread')->set('cost_price', '50')->set('selling_price', '60')->set('stock_quantity', '5')->set('tax_class', 'zero')
             ->call('save')->assertHasNoErrors();
         $this->assertEquals('zero', Product::where('name', 'Bread')->first()->tax_class);
 

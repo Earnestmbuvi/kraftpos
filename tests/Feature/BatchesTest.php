@@ -265,7 +265,7 @@ class BatchesTest extends TestCase
 
         Volt::test('products.manage')
             ->call('openCreate')
-            ->set('name', 'Yoghurt')->set('selling_price', '80')->set('stock_quantity', '10')
+            ->set('name', 'Yoghurt')->set('cost_price', '50')->set('selling_price', '80')->set('stock_quantity', '10')
             ->set('tracksBatches', true)
             ->call('save')->assertHasNoErrors();
 
@@ -276,7 +276,7 @@ class BatchesTest extends TestCase
 
         Volt::test('products.manage')
             ->call('openCreate')
-            ->set('name', 'Bread')->set('selling_price', '60')->set('stock_quantity', '10')
+            ->set('name', 'Bread')->set('cost_price', '50')->set('selling_price', '60')->set('stock_quantity', '10')
             ->call('save')->assertHasNoErrors();
 
         $bread = Product::where('name', 'Bread')->first();

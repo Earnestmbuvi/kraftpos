@@ -10,7 +10,7 @@ class Product extends Model
 {
     use BelongsToBusiness, CannotBeDeleted;
 
-    protected $fillable = ['category_id', 'name', 'description', 'type', 'unit', 'image_path', 'is_active', 'tracks_batches', 'is_service', 'tax_class'];
+    protected $fillable = ['category_id', 'name', 'description', 'type', 'unit', 'image_path', 'is_active', 'tracks_batches', 'is_service', 'tax_class',];
 
     protected $casts = ['is_active', 'is_service' => 'boolean', 'tracks_batches' => 'boolean'];
 

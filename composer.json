@@ -11,6 +11,7 @@
         "laravel/tinker": "^2.10.1",
         "livewire/livewire": "^3.6.4",
         "livewire/volt": "^1.7.0",
+        "picqer/php-barcode-generator": "*",
         "spatie/laravel-permission": "^6.25"
     },
     "require-dev": {

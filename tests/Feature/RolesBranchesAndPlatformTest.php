@@ -127,7 +127,7 @@ class RolesBranchesAndPlatformTest extends TestCase
         $west = BranchService::create('Westlands');
 
         Volt::test('products.manage')->call('openCreate')
-            ->set('name', 'Milk')->set('selling_price', '60')->set('stock_quantity', '5')->set('branchIds', [(string) $west->id])
+            ->set('name', 'Milk')->set('cost_price', '50')->set('selling_price', '60')->set('stock_quantity', '5')->set('branchIds', [(string) $west->id])
             ->call('save')->assertHasNoErrors();
 
         $this->assertEquals([$west->id], Product::where('name', 'Milk')->first()->branches()->pluck('branches.id')->all());

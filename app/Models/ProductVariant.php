@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToBusiness;
 use App\Models\Concerns\CannotBeDeleted;
 use Illuminate\Database\Eloquent\Model;
 
+
 class ProductVariant extends Model
 {
     use BelongsToBusiness, CannotBeDeleted;

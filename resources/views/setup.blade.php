@@ -19,12 +19,14 @@
                 <livewire:settings.tax />
             @elseif ($tab === 'branches')
                 <livewire:branches.manage />
-            @elseif ($tab === 'delivery')
-                <livewire:settings.delivery-zones />
             @elseif ($tab === 'receipts')
                 <livewire:settings.receipts />
             @elseif ($tab === 'roles')
                 <livewire:settings.roles />
+            @elseif ($tab === 'delivery')
+                <livewire:settings.delivery-zones />
+            @elseif ($tab === 'document-texts')
+                <livewire:settings.document-texts />
             @endif
         </div>
     </div>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductOption;
@@ -13,12 +14,12 @@ use Illuminate\Validation\Rule;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
-use App\Models\Branch;
 
 new class extends Component
 {
     use WithPagination, WithFileUploads;
 
+    public string $kind = 'product'; // product | service: which list this screen shows
     public string $search = '';
     public bool $showForm = false;
 
@@ -31,6 +32,7 @@ new class extends Component
 
     // shared
     public string $name = '';
+    public ?string $description = null;
     public $category_id = null;
     public string $unit = 'pcs';
     public string $tax_class = 'standard';
@@ -41,7 +43,7 @@ new class extends Component
     // single
     public ?string $sku = null;
     public ?string $barcode = null;
-    public $cost_price = 0;
+    public $cost_price = '';
     public $selling_price = '';
     public $stock_quantity = 0;
     public $low_stock_threshold = 0;
@@ -54,6 +56,12 @@ new class extends Component
     public $bulkPrice = '';
     public $bulkStock = '';
     public array $branchIds = [];
+
+    public function mount(string $kind = 'product'): void
+    {
+        $this->kind = $kind === 'service' ? 'service' : 'product';
+        $this->isService = $this->kind === 'service';
+    }
 
     public function updatedSearch(): void
     {
@@ -70,7 +78,8 @@ new class extends Component
             'options' => ProductOption::active()
                 ->with(['values' => fn ($q) => $q->active()])
                 ->orderBy('name')->get(),
-            'products' => Product::with(['category', 'variants'])
+            'products' => Product::with(['category', 'variants', 'branches'])
+                ->where('is_service', $this->kind === 'service')
                 ->when($term !== '', function ($q) use ($term) {
                     $q->where(function ($q) use ($term) {
                         $q->where('name', 'like', "%{$term}%")
@@ -81,7 +90,7 @@ new class extends Component
                 })
                 ->orderBy('name')
                 ->paginate(15),
-                'branches' => Branch::active()->orderByDesc('is_main')->orderBy('name')->get(),
+            'branches' => Branch::active()->orderByDesc('is_main')->orderBy('name')->get(),
         ];
     }
 
@@ -94,12 +103,13 @@ new class extends Component
     {
         $this->reset(
             'mode', 'isService', 'tracksBatches', 'wasTracked', 'editingId', 'editingVariantId',
-            'name', 'category_id', 'unit', 'tax_class',
+            'name', 'description', 'category_id', 'unit', 'tax_class',
             'photo', 'existingImage', 'removePhoto',
             'sku', 'barcode', 'cost_price', 'selling_price', 'stock_quantity',
             'low_stock_threshold', 'optionIds', 'valueIds', 'rows',
-            'bulkCost', 'bulkPrice', 'bulkStock','branchIds'
+            'bulkCost', 'bulkPrice', 'bulkStock', 'branchIds'
         );
+        $this->isService = $this->kind === 'service';
         $this->resetErrorBag();
 
         foreach (ProductOption::active()->pluck('id') as $id) {
@@ -154,6 +164,7 @@ new class extends Component
         $this->tracksBatches = (bool) $product->tracks_batches;
         $this->wasTracked = $this->tracksBatches;
         $this->name = $product->name;
+        $this->description = $product->description;
         $this->category_id = $product->category_id;
         $this->unit = $product->unit;
         $this->tax_class = $product->tax_class ?? 'standard';
@@ -264,7 +275,7 @@ new class extends Component
                 'options' => $combo,
                 'sku' => null,
                 'barcode' => null,
-                'cost_price' => 0,
+                'cost_price' => '',
                 'selling_price' => '',
                 'stock_quantity' => 0,
                 'low_stock_threshold' => 0,
@@ -304,6 +315,7 @@ new class extends Component
     {
         return [
             'name' => ['required', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'category_id' => ['nullable', 'integer',
                 Rule::exists('categories', 'id')->where('business_id', $businessId)],
             'unit' => ['required', Rule::exists('units', 'name')
@@ -329,6 +341,11 @@ new class extends Component
         }
     }
 
+    private function syncBranches(Product $product): void
+    {
+        $product->branches()->sync(array_values(array_unique(array_map('intval', $this->branchIds))));
+    }
+
     private function saveSingle(): void
     {
         $businessId = auth()->user()->business_id;
@@ -344,7 +361,7 @@ new class extends Component
             'barcode' => ['nullable', 'string', 'max:50',
                 Rule::unique('product_variants', 'barcode')
                     ->where('business_id', $businessId)->ignore($this->editingVariantId)],
-            'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'cost_price' => ['required', 'numeric', 'min:0'],
             'selling_price' => ['required', 'numeric', 'min:0'],
             'low_stock_threshold' => ['required', 'integer', 'min:0'],
         ];
@@ -363,15 +380,17 @@ new class extends Component
             $this->stock_quantity = 0; // tracked stock is received on the Stock screen, with an expiry date
         }
 
-        $this->validate($rules);
+        $this->validate($rules, ['cost_price.required' => 'Enter the cost price (use 0 if there is none).']);
 
         $editing = (bool) $this->editingId;
+        $description = trim((string) $this->description) ?: null;
 
-        DB::transaction(function () {
+        DB::transaction(function () use ($description) {
             if ($this->editingId) {
                 $product = Product::findOrFail($this->editingId);
                 $product->update([
                     'name' => $this->name,
+                    'description' => $description,
                     'category_id' => $this->category_id,
                     'unit' => $this->unit,
                     'tax_class' => $this->tax_class,
@@ -390,6 +409,7 @@ new class extends Component
             } else {
                 $product = Product::create([
                     'name' => $this->name,
+                    'description' => $description,
                     'category_id' => $this->category_id,
                     'type' => 'single',
                     'is_service' => $this->isService,
@@ -436,13 +456,14 @@ new class extends Component
             'rows' => ['required', 'array', 'min:1'],
             'rows.*.sku' => ['nullable', 'string', 'max:50'],
             'rows.*.barcode' => ['nullable', 'string', 'max:50'],
-            'rows.*.cost_price' => ['nullable', 'numeric', 'min:0'],
+            'rows.*.cost_price' => ['required', 'numeric', 'min:0'],
             'rows.*.selling_price' => ['required', 'numeric', 'min:0'],
             'rows.*.stock_quantity' => ['required', 'integer'],
             'rows.*.low_stock_threshold' => ['required', 'integer', 'min:0'],
         ], [
             'rows.required' => 'Generate the variants first.',
             'rows.min' => 'Generate the variants first.',
+            'rows.*.cost_price.required' => 'Enter the cost price (use 0 if there is none).',
         ]);
 
         foreach (['sku', 'barcode'] as $field) {
@@ -466,10 +487,12 @@ new class extends Component
         }
 
         $editing = (bool) $this->editingId;
+        $description = trim((string) $this->description) ?: null;
 
-        DB::transaction(function () {
+        DB::transaction(function () use ($description) {
             $data = [
                 'name' => $this->name,
+                'description' => $description,
                 'category_id' => $this->category_id,
                 'unit' => $this->unit,
                 'tax_class' => $this->tax_class,
@@ -523,26 +546,24 @@ new class extends Component
         $product = Product::findOrFail($id);
         $product->is_active ? $product->disable() : $product->enable();
     }
-    private function syncBranches(Product $product): void
-{
-    $product->branches()->sync(array_values(array_unique(array_map('intval', $this->branchIds))));
-}
 }; ?>
 
 <div class="space-y-6">
+    @php $isServicePage = $kind === 'service'; @endphp
+
     {{-- Toolbar --}}
     <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
         <x-text-input wire:model.live.debounce.300ms="search" type="search"
-                      placeholder="Search by name, SKU or barcode..." class="block w-full" />
+                      placeholder="{{ $isServicePage ? 'Search services by name or SKU...' : 'Search by name, SKU or barcode...' }}" class="block w-full" />
         @can('manage-products')
-            <a href="{{ route('products.import') }}" wire:navigate
+            <a href="{{ route('products.import', ['kind' => $kind]) }}" wire:navigate
                class="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-brand-500 px-4 py-2 text-sm font-semibold text-brand-600 hover:bg-brand-50">Import CSV</a>
         @endcan
-        <a href="{{ route('products.export') }}"
+        <a href="{{ route('catalog.export', $kind) }}"
            class="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Export CSV</a>
         @can('manage-products')
             <x-primary-button type="button" wire:click="openCreate" class="whitespace-nowrap">
-                + Add product
+                + Add {{ $kind }}
             </x-primary-button>
         @endcan
     </div>
@@ -552,7 +573,7 @@ new class extends Component
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $isServicePage ? 'Service' : 'Product' }}</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
                     @can('view-cost-prices')
@@ -560,7 +581,9 @@ new class extends Component
                     @endcan
                     <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tax</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
+                    @unless ($isServicePage)
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
+                    @endunless
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th class="px-4 py-3"></th>
                 </tr>
@@ -583,12 +606,18 @@ new class extends Component
                             <div class="flex items-center gap-3">
                                 <x-product-image :url="$product->image_url" class="h-10 w-10 shrink-0 rounded-lg" />
                                 <span>
-                                    {{ $product->name }}
+                                    <a href="{{ route('products.show', $product) }}" wire:navigate class="font-medium text-gray-900 hover:text-brand-600 hover:underline">{{ $product->name }}</a>
                                     @unless ($isSingle)
                                         <span class="ml-1 text-xs text-gray-500">({{ $variants->count() }} variants)</span>
                                     @endunless
                                     @if ($product->tracks_batches)
                                         <x-badge color="orange" class="ml-1">Batches</x-badge>
+                                    @endif
+                                    @if ($product->description)
+                                        <span class="block max-w-xs truncate text-xs text-gray-500">{{ $product->description }}</span>
+                                    @endif
+                                    @if ($branches->count() > 1)
+                                        <span class="block text-xs text-gray-500">{{ $product->branches->isEmpty() ? 'All branches' : $product->branches->pluck('name')->implode(', ') }}</span>
                                     @endif
                                 </span>
                             </div>
@@ -606,13 +635,11 @@ new class extends Component
                             @endif
                         </td>
                         <td class="px-4 py-3 text-sm text-gray-600">{{ $taxLabel }}</td>
-                        <td class="px-4 py-3 text-right {{ $low ? 'text-red-600 font-semibold' : '' }}">
-                            @if ($service)
-                                <x-badge color="orange">Service</x-badge>
-                            @else
+                        @unless ($isServicePage)
+                            <td class="px-4 py-3 text-right {{ $low ? 'text-red-600 font-semibold' : '' }}">
                                 {{ $stock }} {{ $product->unit }}
-                            @endif
-                        </td>
+                            </td>
+                        @endunless
                         <td class="px-4 py-3">
                             <x-badge :color="$product->is_active ? 'green' : 'red'">{{ $product->is_active ? 'Active' : 'Disabled' }}</x-badge>
                         </td>
@@ -628,7 +655,7 @@ new class extends Component
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" class="px-4 py-6 text-center text-gray-500">No products found.</td></tr>
+                    <tr><td colspan="9" class="px-4 py-6 text-center text-gray-500">No {{ $isServicePage ? 'services' : 'products' }} found.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -654,18 +681,11 @@ new class extends Component
                         <div class="space-y-6 p-6">
                             {{-- Basics --}}
                             <x-card class="p-6 space-y-4">
-                                <div class="inline-flex rounded-lg border border-gray-300 overflow-hidden">
-                                    <button type="button" wire:click="setKind(false)" @disabled($editingId)
-                                            class="px-4 py-2 text-sm font-medium {{ ! $isService ? 'bg-brand-500 text-white' : 'bg-white text-gray-700' }}">Product</button>
-                                    <button type="button" wire:click="setKind(true)" @disabled($editingId)
-                                            class="px-4 py-2 text-sm font-medium {{ $isService ? 'bg-brand-500 text-white' : 'bg-white text-gray-700' }}">Service</button>
-                                </div>
-
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div class="md:col-span-2">
                                         <x-input-label for="name" value="Name *" />
                                         <x-text-input wire:model="name" id="name" type="text" class="mt-1 block w-full"
-                                                      placeholder="e.g. Sugar 1kg, Haircut, or T-Shirt for variants" />
+                                                      placeholder="{{ $isService ? 'e.g. Haircut, Consultation, Delivery' : 'e.g. Sugar 1kg, or T-Shirt for variants' }}" />
                                         <x-input-error :messages="$errors->get('name')" class="mt-2" />
                                     </div>
 
@@ -685,21 +705,6 @@ new class extends Component
                                             @endif
                                         </div>
                                     @endunless
-
-                                    @if ($branches->count() > 1)
-    <div>
-        <p class="text-sm font-medium text-gray-700">Sold at</p>
-        <p class="text-xs text-gray-500">Leave all unticked to sell it at every branch. Tick some to limit it to those branches.</p>
-        <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            @foreach ($branches as $b)
-                <label wire:key="pb-{{ $b->id }}" class="flex items-center gap-2 text-sm text-gray-700">
-                    <input type="checkbox" wire:model="branchIds" value="{{ $b->id }}" class="rounded"> {{ $b->name }}
-                </label>
-            @endforeach
-        </div>
-        <x-input-error :messages="collect($errors->get('branchIds.*'))->flatten()->all()" class="mt-2" />
-    </div>
-@endif
 
                                     <div>
                                         <x-input-label for="category_id" value="Category" />
@@ -732,6 +737,29 @@ new class extends Component
                                         <x-input-error :messages="$errors->get('tax_class')" class="mt-2" />
                                     </div>
                                 </div>
+
+                                <div>
+                                    <x-input-label for="description" value="Description (optional)" />
+                                    <textarea wire:model="description" id="description" rows="3" maxlength="1000"
+                                              class="mt-1 block w-full rounded-lg border-gray-300 text-sm"
+                                              placeholder="{{ $isService ? 'What the service includes' : 'Size, brand, ingredients or anything worth noting' }}"></textarea>
+                                    <x-input-error :messages="$errors->get('description')" class="mt-2" />
+                                </div>
+
+                                @if ($branches->count() > 1)
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-700">Sold at</p>
+                                        <p class="text-xs text-gray-500">Leave all unticked to sell it at every branch. Tick some to limit it to those branches.</p>
+                                        <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                            @foreach ($branches as $b)
+                                                <label wire:key="pb-{{ $b->id }}" class="flex items-center gap-2 text-sm text-gray-700">
+                                                    <input type="checkbox" wire:model="branchIds" value="{{ $b->id }}" class="rounded"> {{ $b->name }}
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                        <x-input-error :messages="collect($errors->get('branchIds.*'))->flatten()->all()" class="mt-2" />
+                                    </div>
+                                @endif
 
                                 @unless ($isService)
                                     <div>
@@ -780,16 +808,16 @@ new class extends Component
                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div>
                                             <x-input-label for="sku" value="SKU (optional)" />
-                                            <x-text-input wire:model="sku" id="sku" type="text" class="mt-1 block w-full" />
+                                            <x-text-input wire:model="sku" id="sku" type="text" placeholder="Leave empty to generate" class="mt-1 block w-full" />
                                             <x-input-error :messages="$errors->get('sku')" class="mt-2" />
                                         </div>
                                         <div>
-                                            <x-input-label for="barcode" value="Barcode (optional)" />
-                                            <x-text-input wire:model="barcode" id="barcode" type="text" class="mt-1 block w-full" />
+                                            <x-input-label for="barcode" value="Barcode" />
+                                            <x-text-input wire:model="barcode" id="barcode" type="text" aria-placeholder="Leave empty to generate" class="mt-1 block w-full" />
                                             <x-input-error :messages="$errors->get('barcode')" class="mt-2" />
                                         </div>
                                         <div>
-                                            <x-input-label for="cost_price" value="Cost price" />
+                                            <x-input-label for="cost_price" value="Cost price *" />
                                             <x-text-input wire:model="cost_price" id="cost_price" type="number" step="0.01" min="0" class="mt-1 block w-full" />
                                             <x-input-error :messages="$errors->get('cost_price')" class="mt-2" />
                                         </div>
@@ -858,7 +886,7 @@ new class extends Component
 
                                         <div class="flex flex-wrap items-end gap-3 rounded-lg bg-gray-50 p-3">
                                             <span class="text-sm text-gray-600">Fill all new rows:</span>
-                                            <x-text-input wire:model="bulkCost" type="number" step="0.01" min="0" placeholder="Cost" class="w-28" />
+                                            <x-text-input wire:model="bulkCost" type="number" step="0.01" min="0" placeholder="Cost *" class="w-28" />
                                             <x-text-input wire:model="bulkPrice" type="number" step="0.01" min="0" placeholder="Price" class="w-28" />
                                             @unless ($tracksBatches)
                                                 <x-text-input wire:model="bulkStock" type="number" step="1" placeholder="Stock" class="w-28" />

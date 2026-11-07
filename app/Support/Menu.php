@@ -44,6 +44,7 @@ class Menu
             $tabs['branches'] = 'Branches';
             $tabs['roles'] = 'Staff roles';
             $tabs['receipts'] = 'Receipts and documents';
+            $tabs['document-texts'] = 'Terms and payment details';
         }
 
 
@@ -67,9 +68,11 @@ class Menu
         ['label' => 'Quotations', 'route' => 'admin.quotations', 'match' => ['admin.quotations'], 'show' => true],
         ['label' => 'Invoices', 'route' => 'admin.invoices', 'match' => ['admin.invoices'], 'show' => true],
         ['label' => 'Catalogue', 'route' => 'admin.catalogue', 'match' => ['admin.catalogue'], 'show' => true],
+
     ]],
     ['label' => 'Leads', 'icon' => 'people', 'route' => 'admin.leads', 'match' => ['admin.leads'], 'show' => true],
     ['label' => 'Admins', 'icon' => 'staff', 'route' => 'admin.admins', 'match' => ['admin.admins'], 'show' => true],
+    ['label' => 'Activity', 'icon' => 'chart', 'route' => 'admin.activity', 'match' => ['admin.activity'], 'show' => true],
 ];
         } else {
             $setup = [];
@@ -89,11 +92,13 @@ class Menu
                     ['label' => 'Exchange', 'route' => 'exchanges.create', 'match' => ['exchanges*'], 'show' => $c('process-returns')],
                 ]],
 
-                ['label' => 'Products', 'icon' => 'box', 'match' => ['products', 'products.*'], 'children' => [
-                    ['label' => 'Product list', 'route' => 'products', 'match' => ['products'], 'show' => $c('view-products')],
-                    ['label' => 'Import CSV', 'route' => 'products.import', 'match' => ['products.import'], 'show' => $c('manage-products')],
-                    ['label' => 'Export CSV', 'route' => 'products.export', 'match' => ['products.export'], 'download' => true, 'show' => $c('view-products')],
-                ]],
+                ['label' => 'Products', 'icon' => 'box', 'match' => ['products', 'products.*', 'services', 'catalog.*', 'labels'], 'children' => [
+                     ['label' => 'Product list', 'route' => 'products', 'match' => ['products'], 'show' => $c('view-products')],
+                     ['label' => 'Services list', 'route' => 'services', 'match' => ['services'], 'show' => $c('view-products')],
+                     ['label' => 'Import CSV', 'route' => 'products.import', 'match' => ['products.import'], 'show' => $c('manage-products')],
+                     ['label' => 'Export CSV', 'route' => 'catalog.export', 'params' => ['kind' => 'product'], 'match' => ['catalog.export'], 'download' => true, 'show' => $c('view-products')],
+                     ['label' => 'Print labels', 'route' => 'labels', 'match' => ['labels'], 'show' => $c('manage-products')],
+                 ]],
 
                 ['label' => 'Stock', 'icon' => 'stock', 'match' => ['stock', 'stock.*'], 'children' => [
                     ['label' => 'Adjustment', 'route' => 'stock', 'match' => ['stock'], 'show' => $c('adjust-stock')],
@@ -104,7 +109,7 @@ class Menu
 
                 ['label' => 'Expenses', 'icon' => 'expense', 'route' => 'expenses', 'match' => ['expenses'], 'show' => $c('record-expenses')],
 
-                ['label' => 'Reports', 'icon' => 'chart', 'match' => ['reports', 'reports.*'], 'children' => [
+                ['label' => 'Reports', 'icon' => 'chart', 'match' => ['reports', 'reports.*','activity'], 'children' => [
                     ['label' => 'Sales and profit', 'route' => 'reports', 'match' => ['reports', 'reports.export'], 'show' => $c('view-reports')],
                     ['label' => 'Sale items', 'route' => 'reports.sale-items', 'match' => ['reports.sale-items'], 'show' => $c('make-sales')],
                     ['label' => 'Customer report', 'route' => 'reports.customers', 'match' => ['reports.customers'], 'show' => $c('view-reports')],
@@ -114,6 +119,7 @@ class Menu
                     ['label' => 'Expense report', 'route' => 'reports.expenses', 'match' => ['reports.expenses'], 'show' => $c('view-reports')],
                     ['label' => 'Income statement', 'route' => 'reports.income', 'match' => ['reports.income'], 'show' => $c('view-reports') && $c('view-cost-prices')],
                     ['label' => 'Tax report', 'route' => 'reports.tax', 'match' => ['reports.tax'], 'show' => $c('view-reports')],
+                    ['label' => 'Activity log', 'route' => 'activity', 'match' => ['activity'], 'show' => $c('manage-users')],
                 ]],
 
                 ['label' => 'Customers', 'icon' => 'people', 'route' => 'customers', 'match' => ['customers'], 'show' => $c('manage-customers')],

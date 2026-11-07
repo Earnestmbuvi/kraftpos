@@ -15,17 +15,20 @@ class ProductImportService
 
     public const HEADERS = [
         'name', 'category', 'unit', 'sku', 'barcode',
-        'cost_price', 'selling_price', 'stock', 'low_stock_threshold', 'type', 'tax', 'branches',
+        'cost_price', 'selling_price', 'stock', 'low_stock_threshold', 'type', 'tax', 'branches', 'description',
     ];
 
     /**
      * @param  array  $defaultBranchIds  branches for rows whose "branches" cell is empty (empty = every branch)
+     * @param  string|null  $kind  'product' or 'service': what this import is for. Null accepts either, by the type column.
      * @return array{created:int, errors:array}
      */
-    public static function run(string $path, array $defaultBranchIds = []): array
+    public static function run(string $path, array $defaultBranchIds = [], ?string $kind = null): array
     {
         $user = auth()->user();
         abort_unless($user && $user->business_id && $user->can('manage-products'), 403);
+
+        $kind = in_array($kind, ['product', 'service'], true) ? $kind : null;
 
         [$rows, $errors] = self::read($path);
         if ($errors) {
@@ -35,7 +38,7 @@ class ProductImportService
         // Only branches of this shop are accepted (the Branch model is tenant-scoped)
         $default = Branch::whereIn('id', array_map('intval', $defaultBranchIds))->pluck('id')->map(fn ($i) => (int) $i)->all();
 
-        [$clean, $errors] = self::validate($rows);
+        [$clean, $errors] = self::validate($rows, $kind);
         if ($errors) {
             return ['created' => 0, 'errors' => $errors];
         }
@@ -44,6 +47,7 @@ class ProductImportService
             foreach ($clean as $r) {
                 $product = Product::create([
                     'name' => $r['name'],
+                    'description' => $r['description'],
                     'category_id' => $r['category_id'],
                     'type' => 'single',
                     'is_service' => $r['service'],
@@ -135,7 +139,7 @@ class ProductImportService
         return $rows ? [$rows, []] : [[], ['There are no product rows in the file.']];
     }
 
-    private static function validate(array $rows): array
+    private static function validate(array $rows, ?string $kind): array
     {
         $errors = [];
         $clean = [];
@@ -161,11 +165,18 @@ class ProductImportService
                 $problems[] = 'Name is required (150 characters at most).';
             }
 
+            $description = trim((string) ($r['description'] ?? ''));
+            if (mb_strlen($description) > 1000) {
+                $problems[] = 'Description is too long (1000 characters at most).';
+            }
+
             $type = mb_strtolower($r['type'] ?? '');
             if (! in_array($type, ['', 'product', 'service'], true)) {
                 $problems[] = 'Type must be "product" or "service".';
+            } elseif ($kind && $type !== '' && $type !== $kind) {
+                $problems[] = "This import is for {$kind}s only. Change type to \"{$kind}\" or leave it empty.";
             }
-            $service = $type === 'service';
+            $service = ($type !== '' ? $type : ($kind ?? 'product')) === 'service';
 
             $taxRaw = mb_strtolower(trim($r['tax'] ?? ''));
             $taxMap = ['' => 'standard', 'standard' => 'standard', 'taxable' => 'standard', 'vat' => 'standard',
@@ -219,9 +230,12 @@ class ProductImportService
             if ($price === '' || ! is_numeric($price) || (float) $price < 0) {
                 $problems[] = 'Selling price must be a number of 0 or more.';
             }
-            $cost = $num($r['cost_price'] ?? '');
-            if ($cost !== '' && (! is_numeric($cost) || (float) $cost < 0)) {
-                $problems[] = 'Cost price must be a number of 0 or more.';
+            $cost = $num($r['cost_price'] ?? '');{
+            if ($cost === '') {
+                $problems[] = 'Cost price is required (write 0 if there is none).';
+                    } elseif (! is_numeric($cost) || (float) $cost < 0) {
+                 $problems[] = 'Cost price must be a number of 0 or more.';
+                    }
             }
             $stock = $num($r['stock'] ?? '');
             if (! $service && $stock !== '' && ! preg_match('/^\d+$/', $stock)) {
@@ -238,7 +252,8 @@ class ProductImportService
 
             if (! $problems) {
                 $clean[] = [
-                    'name' => $name, 'category_id' => $catId, 'unit' => $unit, 'service' => $service,
+                    'name' => $name, 'description' => $description !== '' ? $description : null,
+                    'category_id' => $catId, 'unit' => $unit, 'service' => $service,
                     'sku' => $sku, 'barcode' => $code,
                     'cost' => $cost === '' ? 0 : (float) $cost, 'price' => (float) $price,
                     'stock' => $service || $stock === '' ? 0 : (int) $stock,
@@ -258,3 +273,4 @@ class ProductImportService
         return [$clean, $errors];
     }
 }
+

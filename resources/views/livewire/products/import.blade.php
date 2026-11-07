@@ -13,10 +13,14 @@ new class extends Component
     public $file = null;
     public array $problems = [];
     public array $branchIds = [];
+    public ?string $kind = null;
 
     public function mount(): void
     {
         abort_unless(auth()->user()->can('manage-products'), 403);
+        $q = request()->query('kind');
+
+        $this->kind = in_array($q, ['product', 'service'], true) ? $q : null;
     }
 
     public function with(): array
@@ -38,34 +42,37 @@ new class extends Component
             'file.mimes' => 'The file must be a .csv file.',
         ]);
 
-        $result = ProductImportService::run($this->file->getRealPath(), array_map('intval', $this->branchIds));
+        $result = ProductImportService::run($this->file->getRealPath(), array_map('intval', $this->branchIds), $this->kind);
 
         $this->problems = $result['errors'];
 
         if (! $result['errors']) {
-            session()->flash('notify', $result['created'] . ' product(s) imported.');
-            $this->redirect(route('products'), navigate: true);
+            session()->flash('notify', $result['created'] . ($this->kind === 'service' ? ' service(s)' : ' product(s)') . ' imported.');
+            $this->redirect(route($this->kind === 'service' ? 'services' : 'products'), navigate: true);
         }
     }
 }; ?>
 
 <div class="space-y-6">
+    @php $service = $kind === 'service'; @endphp
+
     <x-card class="p-6 space-y-4">
-        <h3 class="text-lg font-medium text-gray-900">Import products from CSV</h3>
+        <h3 class="text-lg font-medium text-gray-900">Import {{ $service ? 'services' : 'products' }} from CSV</h3>
         <ol class="list-decimal space-y-1 pl-5 text-sm text-gray-600">
-            <li>Download the template and fill in one product per row. You can edit it in Excel and save as CSV.</li>
+            <li>Download the template and fill in one {{ $service ? 'service' : 'product' }} per row. You can edit it in Excel and save as CSV.</li>
             <li>Categories and units must already exist under Setup. Use their exact names.</li>
-            <li><strong>type</strong> is "product" or "service". Stock becomes the opening stock of the branch you are working in; services have none.</li>
+            <li><strong>type</strong> is "{{ $service ? 'service' : 'product' }}" or left empty.@unless ($service) Stock becomes the opening stock of the branch you are working in.@endunless</li>
+            <li><strong>description</strong> is optional.</li>
             <li><strong>branches</strong> is optional. Write branch names separated by <code>|</code>, for example <code>Karen|Westlands</code>. Leave it empty to use the choice below.</li>
             <li>If any row has a problem, nothing is imported and you will see which rows to fix.</li>
         </ol>
-        <a href="{{ route('products.import-template') }}" class="inline-block text-sm font-semibold text-brand-600 hover:underline">Download the template</a>
+        <a href="{{ route('catalog.template', $kind ?? 'product') }}" class="inline-block text-sm font-semibold text-brand-600 hover:underline">Download the template</a>
 
         <form wire:submit="import" class="space-y-4 border-t border-gray-200 pt-4">
             @if ($branches->count() > 1)
                 <div>
                     <p class="text-sm font-medium text-gray-700">Sold at</p>
-                    <p class="text-xs text-gray-500">Leave all unticked to sell the imported products at every branch. Tick some to limit them. A branch named on a row of the file overrides this for that row.</p>
+                    <p class="text-xs text-gray-500">Leave all unticked to sell the imported items at every branch. Tick some to limit them. A branch named on a row of the file overrides this for that row.</p>
                     <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                         @foreach ($branches as $b)
                             <label wire:key="ib-{{ $b->id }}" class="flex items-center gap-2 text-sm text-gray-700">
@@ -83,8 +90,8 @@ new class extends Component
                 <x-input-error :messages="$errors->get('file')" class="mt-2" />
             </div>
             <div class="flex gap-3">
-                <x-primary-button wire:loading.attr="disabled">Import products</x-primary-button>
-                <a href="{{ route('products') }}" wire:navigate
+                <x-primary-button wire:loading.attr="disabled">Import {{ $service ? 'services' : 'products' }}</x-primary-button>
+                <a href="{{ route($service ? 'services' : 'products') }}" wire:navigate
                    class="inline-flex items-center px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</a>
             </div>
         </form>

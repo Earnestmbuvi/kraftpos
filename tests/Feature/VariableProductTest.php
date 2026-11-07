@@ -57,6 +57,7 @@ class VariableProductTest extends TestCase
             ->set('valueIds', $valueIds)
             ->call('generate');
 
+
         $this->assertCount(4, $component->get('rows'));
     }
 
@@ -72,6 +73,7 @@ class VariableProductTest extends TestCase
             ->set('optionIds', $optionIds)
             ->set('valueIds', $valueIds)
             ->call('generate')
+            ->set('bulkCost', '10')->call('applyToNew')
             ->set('bulkPrice', '800')
             ->set('bulkStock', '5')
             ->call('applyToNew')
@@ -96,6 +98,7 @@ class VariableProductTest extends TestCase
             ->set('optionIds', $optionIds)
             ->set('valueIds', $valueIds)
             ->call('generate')
+            ->set('bulkCost', '10')->call('applyToNew')
             ->set('bulkPrice', '800')
             ->call('applyToNew')
             ->set('rows.0.sku', 'DUP')

@@ -105,6 +105,7 @@
                 <div class="space-y-1 text-center text-xs">
                     @if ($s['show_cashier'] && $sale->cashier) <p class="font-bold">Posted By: {{ $sale->cashier->name }}</p> @endif
                     @if ($s['show_till'] && $branch?->till_number) <p class="text-sm font-bold">Till: {{ $branch->till_number }}</p> @endif
+                    @if ($s['show_pay_info'] && $s['pay_info']) <p class="font-bold">{{ $s['pay_info'] }}</p> @endif
                     @if ($s['footer_text']) <p class="whitespace-pre-line pt-1">{{ $s['footer_text'] }}</p> @endif
                     @if ($s['show_powered']) <p class="pt-1 font-bold">Powered by KraftPOS</p> @endif
                 </div>

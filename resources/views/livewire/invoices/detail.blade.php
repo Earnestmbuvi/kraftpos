@@ -240,7 +240,7 @@ new class extends Component
         @if ($invoice->notes)
             <p class="mt-6 text-gray-700"><span class="font-semibold">Notes:</span> {{ $invoice->notes }}</p>
         @endif
-        <x-document-terms type="invoice" :business="$invoice->business" />
+        <livewire:documents.text-blocks kind="invoice" :document-id="$invoice->id" wire:key="texts-{{ $invoice->id }}" />
     </x-card>
 
     @if ($invoice->status === 'issued' && $invoice->balance > 0)

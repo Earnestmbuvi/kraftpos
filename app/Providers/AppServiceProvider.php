@@ -13,6 +13,9 @@ use App\Models\Scopes\BranchViewScope;
 use App\Models\StockBatch;
 use App\Models\StockMovement;
 use App\Services\BranchService;
+use App\Models\ProductVariant;
+use App\Services\ActivityLogger;
+use App\Services\ItemCodes;
 
 class AppServiceProvider extends ServiceProvider
 {
